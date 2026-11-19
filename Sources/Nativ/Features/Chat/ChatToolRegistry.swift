@@ -209,6 +209,13 @@ enum ChatToolRegistry {
                 displayDescription: "Read and find relevant information on public web pages.",
                 configuration: .webRead
             ))
+        tools += ChatTrainingToolRegistry.definitions().map {
+            ChatNativeToolDescriptor(
+                definition: $0,
+                displayDescription: "Let the model train and follow models with the Training extension.",
+                configuration: nil
+            )
+        }
         tools.append(ChatNativeToolDescriptor(
             definition: ChatWorkToolRegistry.definition,
             displayDescription: "Work on documents, code, websites, and shared terminals beside chat.",
@@ -258,7 +265,27 @@ enum ChatToolDispatcher {
         ) async throws -> ChatToolExecutionOutcome
     private typealias FailureHandler = @Sendable (String, Error) -> String
 
-    private static let handlers: [String: Handler] = [
+    private static let handlers: [String: Handler] = trainingHandlers.merging(nativeHandlers) { _, native in
+        native
+    }
+
+    private static let trainingHandlers: [String: Handler] = {
+        var handlers: [String: Handler] = [:]
+        for name in ChatTrainingToolRegistry.toolNames {
+            handlers[name] = { call, context in
+                ChatToolExecutionOutcome(
+                    content: try await ChatTrainingToolExecutor().execute(
+                        call: call,
+                        modelSearchPath: context.modelSearchPath
+                    ),
+                    attachments: []
+                )
+            }
+        }
+        return handlers
+    }()
+
+    private static let nativeHandlers: [String: Handler] = [
         ChatWorkToolRegistry.toolName: { call, context in
             try await executeWorkTool(call: call, context: context)
         },
@@ -300,7 +327,23 @@ enum ChatToolDispatcher {
         },
     ]
 
-    private static let failureHandlers: [String: FailureHandler] = [
+    private static let failureHandlers: [String: FailureHandler] = trainingFailureHandlers.merging(
+        nativeFailureHandlers
+    ) { _, native in
+        native
+    }
+
+    private static let trainingFailureHandlers: [String: FailureHandler] = {
+        var handlers: [String: FailureHandler] = [:]
+        for name in ChatTrainingToolRegistry.toolNames {
+            handlers[name] = { name, error in
+                ChatTrainingToolExecutor().failurePayload(operation: name, error: error)
+            }
+        }
+        return handlers
+    }()
+
+    private static let nativeFailureHandlers: [String: FailureHandler] = [
         ChatWorkToolRegistry.toolName: { _, error in
             ChatWorkToolRegistry.failurePayload(error: error)
         },

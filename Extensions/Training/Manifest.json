@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "com.nativ.training",
+  "version": "1.0.0",
+  "minimumNativVersion": "0.4.6",
+  "displayName": "Training",
+  "summary": "Fine-tune models on your Mac with the MLX-VLM trainer: start, follow, and stop runs within usage caps you set.",
+  "developer": "Nativ",
+  "systemImage": "graduationcap",
+  "included": true,
+  "enabledByDefault": false,
+  "runtime": "builtIn",
+  "extensionPoint": "com.nativ.extension",
+  "contributions": {
+    "sidebar": [
+      {
+        "id": "com.nativ.training.runs",
+        "title": "Training",
+        "systemImage": "graduationcap",
+        "order": 240
+      }
+    ],
+    "commands": [
+      {
+        "id": "com.nativ.training.show-runs-folder",
+        "title": "Show Training Runs Folder",
+        "systemImage": "folder"
+      }
+    ],
+    "shortcuts": [],
+    "settings": [
+      {
+        "id": "com.nativ.training.limits",
+        "title": "Usage limits"
+      }
+    ]
+  },
+  "permissions": [
+    "models.training",
+    "storage.namespaced"
+  ]
+}

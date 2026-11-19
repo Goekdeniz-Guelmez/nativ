@@ -2213,6 +2213,10 @@ final class ChatViewModel: ObservableObject {
         if toolName == ChatWebReadToolRegistry.toolName {
             return ChatWebReadToolRegistry.isConfigured()
         }
+        if ChatTrainingToolRegistry.toolNames.contains(toolName) {
+            // Offered only while the Training extension is enabled.
+            return ChatTrainingToolRegistry.isAvailable
+        }
         if ChatReadFileToolRegistry.toolNames.contains(toolName) {
             return FileReadAccessPolicy.isConfigured(rootPath: settings.fileReadRootPath)
         }

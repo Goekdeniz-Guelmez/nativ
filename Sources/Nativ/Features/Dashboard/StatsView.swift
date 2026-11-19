@@ -70,6 +70,7 @@ private struct DashboardContentView: View, @MainActor Equatable {
                         overviewCards
                         analyticsGrid(availableWidth: min(geometry.size.width, 1500) - 44)
                         modelPerformanceSection
+                        TrainingDashboardSection()
                         recentRequestsSection
                     }
                     .padding(.horizontal, 22)

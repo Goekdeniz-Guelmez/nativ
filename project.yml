@@ -110,6 +110,9 @@ targets:
         buildPhase: resources
       - path: Extensions/VoiceDictation/Manifest.json
         buildPhase: resources
+      - path: Extensions/Training
+        type: folder
+        buildPhase: resources
       - path: ThirdParty/ripgrep/Tools
         type: folder
         buildPhase: resources
@@ -197,6 +200,7 @@ targets:
       - path: Sources/Nativ/Features/Extensions/NativKitLibrary.swift
       - path: Sources/Nativ/Features/Extensions/NativKitRuntimeResolver.swift
       - path: Sources/Nativ/Features/Extensions/CustomTool.swift
+      - path: Sources/Nativ/Features/Training/TrainingRunClient.swift
       - path: Sources/Nativ/Features/Routines/Routine.swift
       - path: Sources/Nativ/Features/Routines/ScheduledTaskChatLinker.swift
       - path: Sources/Nativ/Features/Routines/ScheduledTaskNotification.swift
@@ -276,6 +280,7 @@ targets:
       - path: Sources/Nativ/Features/Chat/Tools/ChatImageModelSelection.swift
       - path: Sources/Nativ/Features/Chat/Tools/ChatSystemStatsTool.swift
       - path: Sources/Nativ/Features/Chat/Tools/ChatListModelsTool.swift
+      - path: Sources/Nativ/Features/Chat/Tools/ChatTrainingTool.swift
       - path: Sources/Nativ/Features/Chat/Tools/ChatServerStatsTool.swift
       - path: Sources/Nativ/Features/Chat/Tools/ChatSwitchModelTool.swift
       - path: Sources/Nativ/Features/Chat/Tools/ChatWebSearchTool.swift

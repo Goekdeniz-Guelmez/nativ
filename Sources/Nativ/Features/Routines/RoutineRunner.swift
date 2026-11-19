@@ -596,6 +596,8 @@ final class RoutineRunner {
                     tool.name != ChatTerminalToolRegistry.toolName,
                     tool.name != ChatWebSearchToolRegistry.toolName
                         || ChatWebSearchToolRegistry.isConfigured(),
+                    !ChatTrainingToolRegistry.toolNames.contains(tool.name)
+                        || ChatTrainingToolRegistry.isAvailable,
                     tool.name != ChatReadFileToolRegistry.toolName
                         || FileReadAccessPolicy.isConfigured(rootPath: settings.fileReadRootPath)
                 {

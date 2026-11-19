@@ -9,6 +9,10 @@ Audio is the reference first-party extension. Voice dictation is one of its curr
 capabilities. It is installed and enabled by default, but a user can disable or
 remove it and restore it later.
 
+Training is the second first-party extension. It uses the `builtIn` runtime: its
+work happens in Nativ's bundled Python, so it needs no ExtensionFoundation process.
+See [Training](../features/training.md).
+
 ## Repository layout
 
 ```text
@@ -16,9 +20,11 @@ Sources/
 ├── NativExtensionSDK/                   # Stable public contracts
 └── Nativ/Features/Extensions/           # Host registry, broker, and management UI
 Extensions/
-└── VoiceDictation/
-    ├── Manifest.json                    # Declarative identity and contributions
-    └── Runtime/                         # ExtensionFoundation process entry point
+├── VoiceDictation/
+│   ├── Manifest.json                    # Declarative identity and contributions
+│   └── Runtime/                         # ExtensionFoundation process entry point
+└── Training/
+    └── Manifest.json                    # builtIn runtime: no separate process
 ```
 
 Keep reusable contracts in `NativExtensionSDK`. Keep privileged implementations in
@@ -126,6 +132,7 @@ Permissions are declared up front and enforced again by the XPC broker:
 - `microphone`
 - `accessibility.insertText`
 - `models.speechToText`
+- `models.training`
 - `overlay`
 - `notifications`
 - `storage.namespaced`

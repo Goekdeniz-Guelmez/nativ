@@ -371,7 +371,7 @@ final class NativExtensionManager: ObservableObject {
             return requestedPermissions.contains(permission.rawValue)
                 ? .denied
                 : .notRequested
-        case .modelsSpeechToText, .overlay, .namespacedStorage:
+        case .modelsSpeechToText, .modelsTraining, .overlay, .namespacedStorage:
             return .granted
         case .notifications:
             return .notRequested
@@ -390,7 +390,7 @@ final class NativExtensionManager: ObservableObject {
             return status == .denied ? "Open Settings" : "Request"
         case .notifications:
             return nil
-        case .modelsSpeechToText, .overlay, .namespacedStorage:
+        case .modelsSpeechToText, .modelsTraining, .overlay, .namespacedStorage:
             return nil
         }
     }
@@ -432,7 +432,7 @@ final class NativExtensionManager: ObservableObject {
             // No included extension currently requests notifications. Keep the
             // declaration visible without prompting for an unused capability.
             break
-        case .modelsSpeechToText, .overlay, .namespacedStorage:
+        case .modelsSpeechToText, .modelsTraining, .overlay, .namespacedStorage:
             break
         }
     }

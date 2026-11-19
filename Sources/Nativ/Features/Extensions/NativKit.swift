@@ -336,7 +336,56 @@ private extension NativSkill {
         """
     )
 
-    static let kitDefinitions = [engineeringKitSkill, researchKitSkill]
+    static let trainingKitSkill = kit(
+        "A3000000-0000-4000-8000-000000000003",
+        "Training models",
+        """
+        You can train and fine-tune models on this Mac yourself with the training tools. When the user asks for a model to be trained, do it; do not hand them instructions.
+
+        Flow
+        - list_training_modes first: without arguments for the algorithms, then with the chosen algorithm for its options. The tool is the truth; if it differs from this text, follow the tool.
+        - training_limits, validate_model_support, and inspect_dataset before building a run.
+        - check_training_config before every start_training; start only on "valid": true and tell the user about errors and notes.
+        - Follow with training_status. Report only what tools return; never invent losses, iterations, or paths.
+
+        Choosing the algorithm from the data
+        - sft: chat or question/answer rows. Teaches the model to produce the answers. Set train_on_completions true so only the assistant replies are learned.
+        - uft: plain text. Learns the whole sequence; use it to adapt a model to a domain or style. Not for train_on_completions.
+        - orpo: rows with prompt, chosen, rejected. Learns the chosen answer while pushing away the rejected one. No second model, so it is the cheaper preference method.
+        - dpo: the same rows, but compared against a frozen copy of the model, which keeps it close to its original behaviour. Loads the model twice, so it needs about double the memory.
+        - grpo: rows with prompt and answer plus a reward function. The model writes group_size answers per step and is rewarded for better ones. Slowest, because it generates text every step. max_completion_length must be smaller than max_seq_length.
+
+        Settings that decide quality
+        - train_type: lora trains small adapters and is the default; dora is a little heavier; full updates every weight and only fits small models.
+        - lora_rank sets adapter capacity (8 is a good start, 16-32 for harder tasks); keep lora_alpha near twice the rank.
+        - learning_rate: about 1e-4 for lora or dora, 1e-5 or lower for full. Too high makes the loss jump or turn into nan; too low and it barely moves.
+        - Length: use epochs when the user speaks in passes, else iters; never both. 1-3 epochs suits small datasets; more tends to memorise.
+        - lr_schedule "cosine_decay" with warmup_steps of 5-10% of the run gives a smoother finish. grad_clip 1.0 guards against spikes.
+        - A valid split enables val_loss through steps_per_eval; use it to see overfitting.
+
+        Settings that decide memory
+        - max_seq_length is the main lever: set it just above the longest row. Shorter rows are unaffected; longer ones are cut, and a row that would lose its image tokens is rejected.
+        - batch_size 1 with gradient_accumulation_steps 4-8 behaves like a larger batch without the memory.
+        - grad_checkpoint true trades speed for memory. quantization_bits 4 shrinks the base model for lora or dora.
+        - train_vision also trains the image encoder; use it only when the images are unlike what the model knows.
+
+        Using the result
+        - A run saves an adapter, which only works on top of its base model. When the user wants to chat with or reuse the result, pass merge_into_library true to start_training: the trained weights are fused into a full model that appears in their model list, and the tool returns its id as merged_model.
+
+        A clean run
+        - Set only what the user asked for or the task needs; leave the rest at defaults and say which settings you chose and why.
+        - For an untested model and dataset, offer a short pilot of 20-50 iterations first to confirm the loss falls and memory fits.
+        - Healthy: train_loss falls and token accuracy rises. val_loss rising while train_loss falls is overfitting: stop earlier or lower learning_rate. A flat loss needs a higher learning_rate or more capacity.
+
+        Limits and outcomes
+        - Usage limits are the user's. If a check or start is refused, name the limit and its value and offer a run that fits. Never try to get around a limit.
+        - "capped" is not a failure: the weights are saved. Report the iteration and last metrics and offer to continue with resume_adapter_file set to the saved adapters.safetensors. Ask first.
+        - For "failed", read training_status and training_log, report the real error, and fix the cause before retrying. Out of memory: lower max_seq_length, turn on grad_checkpoint, or quantize.
+        - stop_training only when the user asks. Checkpoints are kept.
+        """
+    )
+
+    static let kitDefinitions = [engineeringKitSkill, researchKitSkill, trainingKitSkill]
 }
 
 private extension NativKit {
@@ -366,6 +415,27 @@ private extension NativKit {
                 .mcpServer(.catalog(id: "memory")),
                 .mcpServer(.catalog(id: "sqlite")),
                 .skill(id: NativSkill.researchKitSkill.id),
+            ]
+        ),
+        NativKit(
+            id: "training",
+            name: "Training",
+            summary: "Let the model fine-tune models on this Mac and follow the runs, within your usage limits.",
+            symbol: "graduationcap",
+            tintName: "teal",
+            components: [
+                .nativeTool(name: "list_training_modes"),
+                .nativeTool(name: "training_limits"),
+                .nativeTool(name: "validate_model_support"),
+                .nativeTool(name: "inspect_dataset"),
+                .nativeTool(name: "check_training_config"),
+                .nativeTool(name: "start_training"),
+                .nativeTool(name: "training_status"),
+                .nativeTool(name: "training_log"),
+                .nativeTool(name: "list_training_runs"),
+                .nativeTool(name: "stop_training"),
+                .skill(id: NativSkill.trainingKitSkill.id),
+                .extensionPackage(id: "com.nativ.training"),
             ]
         ),
     ]

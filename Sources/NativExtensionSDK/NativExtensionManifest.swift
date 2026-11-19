@@ -10,6 +10,7 @@ public enum NativExtensionPermission: String, Codable, CaseIterable, Hashable, S
     case systemAudioCapture = "audio.systemCapture"
     case accessibilityInsertText = "accessibility.insertText"
     case modelsSpeechToText = "models.speechToText"
+    case modelsTraining = "models.training"
     case overlay
     case notifications
     case namespacedStorage = "storage.namespaced"
@@ -24,6 +25,8 @@ public enum NativExtensionPermission: String, Codable, CaseIterable, Hashable, S
             "Insert text"
         case .modelsSpeechToText:
             "Speech-to-text models"
+        case .modelsTraining:
+            "Model training"
         case .overlay:
             "Screen overlay"
         case .notifications:

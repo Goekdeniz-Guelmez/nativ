@@ -40,6 +40,39 @@ final class NativExtensionManifestTests: XCTestCase {
         XCTAssertTrue(manifest.permissions.contains(.systemAudioCapture))
     }
 
+    func testTrainingManifestMatchesSDKContract() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let manifestURL = repositoryRoot
+            .appendingPathComponent("Extensions")
+            .appendingPathComponent("Training")
+            .appendingPathComponent("Manifest.json")
+        let manifest = try JSONDecoder().decode(
+            NativExtensionManifest.self,
+            from: Data(contentsOf: manifestURL)
+        )
+
+        try NativExtensionManifestValidator.validate(
+            manifest,
+            hostVersion: manifest.minimumNativVersion
+        )
+        XCTAssertEqual(manifest.id, "com.nativ.training")
+        XCTAssertEqual(manifest.displayName, "Training")
+        XCTAssertEqual(manifest.runtime, .builtIn)
+        XCTAssertNil(manifest.runtimeBundleIdentifier)
+        XCTAssertTrue(manifest.included)
+        XCTAssertEqual(manifest.enabledByDefault, false)
+        XCTAssertEqual(
+            manifest.contributions.sidebar.map(\.id),
+            ["com.nativ.training.runs"]
+        )
+        // Training lists ahead of Audio (order 250) in the sidebar.
+        XCTAssertLessThan(manifest.contributions.sidebar[0].order, 250)
+        XCTAssertEqual(manifest.permissions, [.modelsTraining, .namespacedStorage])
+    }
+
     func testValidManifestPassesValidation() throws {
         let manifest = makeManifest()
 

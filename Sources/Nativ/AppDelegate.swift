@@ -10,8 +10,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
     private let controlPanelDependencies = ControlPanelSharedDependencies()
     let windowRegistry = NativWindowRegistry()
     private let voiceDictationExtension = VoiceDictationExtension()
+    private let trainingExtension = TrainingExtension()
     private lazy var extensionManager = NativExtensionManager(
-        builtInExtensions: [voiceDictationExtension]
+        builtInExtensions: [voiceDictationExtension, trainingExtension]
     )
     private let runtime = SystemRuntimeMonitor()
     private let routineStore = RoutineStore.shared

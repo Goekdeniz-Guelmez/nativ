@@ -91,6 +91,7 @@ final class ChatToolRegistryTests: XCTestCase {
             ChatTerminalToolRegistry.toolName,
             ChatWebSearchToolRegistry.toolName,
             ChatWebReadToolRegistry.toolName,
+        ] + ChatTrainingToolRegistry.toolNames + [
             ChatWorkToolRegistry.toolName,
         ])
     }
