@@ -13,7 +13,7 @@ struct TrainingView: View {
     /// Options shown first when the selected algorithm has them. Every other
     /// option the trainer reports is listed under "All options".
     private static let commonOptionNames = [
-        "model", "data", "dataset", "epochs", "iters", "batch_size",
+        "model", "dataset", "epochs", "iters", "batch_size",
         "learning_rate", "max_seq_length", "grad_checkpoint",
     ]
 
@@ -220,8 +220,10 @@ struct TrainingView: View {
                 if let trainType {
                     trainTypePicker(trainType)
                 }
-                let common = store.options.filter { Self.commonOptionNames.contains($0.name) }
-                let others = store.options.filter {
+                // Options the chosen optimizer does not read are left out.
+                let applicable = store.options.filter { store.applies($0) }
+                let common = applicable.filter { Self.commonOptionNames.contains($0.name) }
+                let others = applicable.filter {
                     !Self.commonOptionNames.contains($0.name) && $0.name != trainType?.name
                 }
                 optionGrid(common)
@@ -343,11 +345,21 @@ struct TrainingView: View {
             }
             .labelsHidden()
         } else {
-            TextField(
-                option.defaultValue.displayText.isEmpty ? option.type : option.defaultValue.displayText,
-                text: text
-            )
+            TextField(Self.placeholder(for: option), text: text)
             .textFieldStyle(.roundedBorder)
+        }
+    }
+
+    /// The default when there is one; otherwise a hint at what to type.
+    private static func placeholder(for option: TrainingOption) -> String {
+        let fallback = option.defaultValue.displayText
+        if !fallback.isEmpty {
+            return fallback
+        }
+        return switch option.name {
+        case "dataset": "Hugging Face dataset ID, e.g. user/name"
+        case "model": "Model ID or local folder"
+        default: option.type
         }
     }
 

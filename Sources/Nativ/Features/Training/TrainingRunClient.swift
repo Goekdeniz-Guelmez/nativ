@@ -82,6 +82,9 @@ struct TrainingOption: Codable, Hashable, Identifiable, Sendable {
     let choices: [TrainingJSON]?
     let help: String?
     let group: String
+    /// Other options this one depends on: it only applies while each named
+    /// option holds one of the listed values (`beta1` needs an Adam optimizer).
+    let requires: [String: [String]]?
 
     var id: String { name }
 
@@ -89,7 +92,7 @@ struct TrainingOption: Codable, Hashable, Identifiable, Sendable {
     var isManaged: Bool { group == "managed" }
 
     private enum CodingKeys: String, CodingKey {
-        case name, flag, type, choices, help, group
+        case name, flag, type, choices, help, group, requires
         case defaultValue = "default"
     }
 
@@ -102,6 +105,7 @@ struct TrainingOption: Codable, Hashable, Identifiable, Sendable {
         choices = try container.decodeIfPresent([TrainingJSON].self, forKey: .choices)
         help = try container.decodeIfPresent(String.self, forKey: .help)
         group = try container.decodeIfPresent(String.self, forKey: .group) ?? "general"
+        requires = try container.decodeIfPresent([String: [String]].self, forKey: .requires)
     }
 
     /// Convert form text to the JSON value the trainer expects. Empty text

@@ -138,13 +138,29 @@ final class TrainingStore: ObservableObject {
         }
     }
 
-    /// The options to send: only fields the person filled in.
+    /// Whether an option applies with the current choices. The trainer says
+    /// which options depend on another one, such as the optimizer.
+    func applies(_ option: TrainingOption) -> Bool {
+        guard let requires = option.requires else {
+            return true
+        }
+        return requires.allSatisfy { name, allowed in
+            let typed = (values[name] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let current = typed.isEmpty
+                ? options.first { $0.name == name }?.defaultValue.displayText ?? ""
+                : typed
+            return allowed.contains(current)
+        }
+    }
+
+    /// The options to send: only fields the person filled in, and only those
+    /// that apply, so a value left in a hidden field is not sent.
     func collectOptions() throws -> [String: TrainingJSON] {
         var result: [String: TrainingJSON] = [
             "task": .string(task),
             "algorithm": .string(algorithm),
         ]
-        for option in options {
+        for option in options where applies(option) {
             if let value = try option.jsonValue(from: values[option.name] ?? "") {
                 result[option.name] = value
             }
