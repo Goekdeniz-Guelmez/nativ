@@ -17,6 +17,8 @@ final class TrainingStore: ObservableObject {
     @Published private(set) var runs: [TrainingRun] = []
     @Published private(set) var log = ""
     @Published private(set) var history: TrainingHistory?
+    /// The selected run's latest generated text, when its algorithm makes any.
+    @Published private(set) var sample: TrainingSample?
     @Published private(set) var check: TrainingCheck?
     @Published private(set) var isBusy = false
     @Published private(set) var isBackendMissing = false
@@ -120,6 +122,13 @@ final class TrainingStore: ObservableObject {
                 if let next = try? await client.history(id), next != history {
                     history = next
                 }
+                // Only generating algorithms keep a sample; skip the call otherwise.
+                if selectedRun?.algorithm == "grpo" {
+                    let next = try? await client.sample(id)
+                    if next != sample {
+                        sample = next
+                    }
+                }
             }
             isBackendMissing = false
         } catch TrainingClientError.backendUnavailable {
@@ -133,6 +142,7 @@ final class TrainingStore: ObservableObject {
         selection = next
         log = ""
         history = nil
+        sample = nil
         Task {
             await refresh()
         }
@@ -215,6 +225,53 @@ final class TrainingStore: ObservableObject {
         await perform { client in
             _ = try await client.stop(run.id)
             await self.refresh()
+        }
+    }
+
+    /// Carry on a stopped run in a new run, and show that one.
+    func continueRun(_ run: TrainingRun) async {
+        await perform { client in
+            let next = try await client.continueRun(run.id)
+            self.select(.run(next.id))
+            await self.refresh()
+        }
+    }
+
+    func delete(_ run: TrainingRun) async {
+        await perform { client in
+            try await client.delete(run.id)
+            if self.selection == .run(run.id) {
+                self.select(.newRun)
+            }
+            await self.refresh()
+        }
+    }
+
+    /// Fill the New Run form with the options another run was started with.
+    func copySettings(of run: TrainingRun) async {
+        await perform { client in
+            let config = try await client.config(run.id)
+            var options = config.options
+            if let task = options.removeValue(forKey: "task")?.displayText,
+               self.taskNames.contains(task) {
+                self.task = task
+            }
+            if let algorithm = options.removeValue(forKey: "algorithm")?.displayText,
+               self.algorithmNames.contains(algorithm) {
+                self.algorithm = algorithm
+            }
+            // A new run gets its own merged model, and starts from the base
+            // model rather than from the other run's weights.
+            self.mergeIntoLibrary = options.removeValue(forKey: "export_qat_path") != nil
+            options.removeValue(forKey: "resume_adapter_file")
+            options.removeValue(forKey: "resume_state")
+            let known = Set(self.options.map(\.name))
+            self.values = options
+                .filter { known.contains($0.key) }
+                .mapValues(\.displayText)
+            self.runName = ""
+            self.check = nil
+            self.select(.newRun)
         }
     }
 

@@ -9,6 +9,8 @@ struct TrainingView: View {
 
     @State private var isEditingLimits = false
     @State private var showsAllOptions = false
+    /// The run a Delete was asked for, until the person confirms.
+    @State private var runPendingDelete: TrainingRun?
 
     /// Options shown first when the selected algorithm has them. Every other
     /// option the trainer reports is listed under "All options".
@@ -45,6 +47,26 @@ struct TrainingView: View {
                     await store.saveLimits(limits)
                 }
             }
+        }
+        .confirmationDialog(
+            "Delete this run?",
+            isPresented: Binding(
+                get: { runPendingDelete != nil },
+                set: { if !$0 { runPendingDelete = nil } }
+            ),
+            presenting: runPendingDelete
+        ) { run in
+            Button("Delete Run", role: .destructive) {
+                Task {
+                    await store.delete(run)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { run in
+            Text(
+                "“\(run.title)” and its log, metrics and saved weights are removed. "
+                    + "A merged model in your model list is kept."
+            )
         }
         .alert(
             "Training",
@@ -153,9 +175,46 @@ struct TrainingView: View {
                 }
                 .padding(.vertical, 2)
                 .tag(run.id)
+                .contextMenu {
+                    runMenu(run)
+                }
             }
             .listStyle(.sidebar)
         }
+    }
+
+    /// Right-click actions for a run in the list.
+    @ViewBuilder
+    private func runMenu(_ run: TrainingRun) -> some View {
+        Button("Copy Settings to New Run") {
+            Task {
+                await store.copySettings(of: run)
+            }
+        }
+        if run.isActive {
+            Button("Stop") {
+                Task {
+                    await store.stop(run)
+                }
+            }
+        }
+        if run.canContinue == true {
+            Button("Continue") {
+                Task {
+                    await store.continueRun(run)
+                }
+            }
+        }
+        if let url = store.runsDirectory?.appendingPathComponent(run.id) {
+            Button("Show in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            }
+        }
+        Divider()
+        Button("Delete Run…", role: .destructive) {
+            runPendingDelete = run
+        }
+        .disabled(run.isActive)
     }
 
     private func usageSummary(_ usage: TrainingUsage) -> String {
@@ -337,10 +396,19 @@ struct TrainingView: View {
             }
             .labelsHidden()
         } else if let choices = option.choices, !choices.isEmpty {
+            let known = choices.map(\.displayText)
             Picker(option.name, selection: text) {
-                Text("Default (\(option.defaultValue.displayText))").tag("")
-                ForEach(choices, id: \.self) { choice in
-                    Text(choice.displayText).tag(choice.displayText)
+                Text(
+                    option.defaultValue.displayText.isEmpty
+                        ? "None"
+                        : "Default (\(option.defaultValue.displayText))"
+                ).tag("")
+                ForEach(known, id: \.self) { choice in
+                    Text(choice).tag(choice)
+                }
+                // A value copied from another run that is not one of the choices.
+                if !text.wrappedValue.isEmpty, !known.contains(text.wrappedValue) {
+                    Text(text.wrappedValue).tag(text.wrappedValue)
                 }
             }
             .labelsHidden()
@@ -399,6 +467,20 @@ struct TrainingView: View {
                         .buttonStyle(.bordered)
                         .disabled(store.isBusy)
                     }
+                    if run.canContinue == true {
+                        Button("Continue") {
+                            Task {
+                                await store.continueRun(run)
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(store.isBusy)
+                        .help("Carry on in a new run from where this one ended.")
+                    }
+                    if store.isBusy {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
                 }
 
                 if let progress = run.progress, let iteration = run.iteration, let iters = run.iters {
@@ -425,6 +507,7 @@ struct TrainingView: View {
                     detailRow("Algorithm", [run.task, run.algorithm].compactMap { $0 }.joined(separator: " / "))
                     detailRow("Started", run.createdAt)
                     detailRow("Ended", run.endedAt)
+                    detailRow("Continues", run.continuedFrom)
                     detailRow("Weights", run.adapterPath)
                     if let exportPath = run.exportPath {
                         detailRow(
@@ -440,6 +523,12 @@ struct TrainingView: View {
                     Text("Charts")
                         .font(.headline)
                     TrainingChartsView(charts: history.charts)
+                }
+
+                if let sample = store.sample {
+                    Text("Last generated output")
+                        .font(.headline)
+                    TrainingSampleView(sample: sample)
                 }
 
                 if let metrics = run.metrics, !metrics.isEmpty {
@@ -481,6 +570,59 @@ struct TrainingView: View {
                 Text(value)
                     .textSelection(.enabled)
                     .lineLimit(2)
+            }
+        }
+    }
+}
+
+/// The latest text a generating run produced. One sample, replaced as the
+/// run goes on, so it costs the run nothing to keep.
+private struct TrainingSampleView: View {
+    let sample: TrainingSample
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 14) {
+                if let reward = sample.reward {
+                    Text("Reward \(TrainingJSON.number(reward).displayText)")
+                        .font(.callout.monospaced())
+                }
+                if let name = sample.rewardFunction {
+                    Text(name)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if let group = sample.group {
+                    Text("Group \(group)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            section("Prompt", sample.prompt, lines: 4)
+            section("Output", sample.completion, lines: nil)
+            section("Expected", sample.answer, lines: 4)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    @ViewBuilder
+    private func section(_ title: String, _ text: String?, lines: Int?) -> some View {
+        if let text, !text.isEmpty {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                ScrollView {
+                    Text(text)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                        .lineLimit(lines)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: lines == nil ? 220 : nil)
             }
         }
     }

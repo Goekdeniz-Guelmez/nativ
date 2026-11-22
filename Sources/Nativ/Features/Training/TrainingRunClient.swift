@@ -258,10 +258,16 @@ struct TrainingRun: Codable, Hashable, Identifiable, Sendable {
     let error: String?
     /// Where a merged, standalone model is written when the run asked for one.
     let exportPath: String?
+    /// Whether the run ended early with weights a new run can carry on from.
+    let canContinue: Bool?
+    /// The run this one carries on, when it was started with Continue.
+    let continuedFrom: String?
 
     private enum CodingKeys: String, CodingKey {
         case id, name, status, task, algorithm, model, notes, iters, iteration, metrics, capped, error
         case exportPath = "export_path"
+        case canContinue = "can_continue"
+        case continuedFrom = "continued_from"
         case createdAt = "created_at"
         case endedAt = "ended_at"
         case exitCode = "exit_code"
@@ -279,6 +285,36 @@ struct TrainingRun: Codable, Hashable, Identifiable, Sendable {
         }
         return min(1, Double(iteration) / Double(iters))
     }
+}
+
+/// The options a run was started with, for starting another like it.
+struct TrainingRunConfig: Codable, Equatable, Sendable {
+    let id: String
+    let name: String?
+    let options: [String: TrainingJSON]
+}
+
+/// The latest text a run generated, for algorithms that generate (GRPO).
+struct TrainingSample: Codable, Equatable, Sendable {
+    let prompt: String?
+    let completion: String?
+    let answer: String?
+    let reward: Double?
+    let rewardFunction: String?
+    let group: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case prompt, completion, answer, reward, group
+        case rewardFunction = "reward_function"
+    }
+}
+
+private struct TrainingSampleResponse: Codable {
+    let sample: TrainingSample?
+}
+
+private struct TrainingDeleted: Codable {
+    let deleted: String
 }
 
 /// A run's metrics over time, exactly as the trainer reported them.
@@ -556,8 +592,28 @@ struct TrainingRunClient: Sendable {
         )
     }
 
+    /// Asks the run to save and end; it answers at its next report, so this
+    /// can take a little while.
     func stop(_ runID: String) async throws -> TrainingRun {
         try await run(["stop", runID])
+    }
+
+    /// Start a new run that carries on an ended one.
+    func continueRun(_ runID: String) async throws -> TrainingRun {
+        try await run(["continue", runID])
+    }
+
+    func delete(_ runID: String) async throws {
+        let _: TrainingDeleted = try await run(["delete", runID])
+    }
+
+    func config(_ runID: String) async throws -> TrainingRunConfig {
+        try await run(["config", runID])
+    }
+
+    func sample(_ runID: String) async throws -> TrainingSample? {
+        let response: TrainingSampleResponse = try await run(["sample", runID])
+        return response.sample
     }
 
     /// Raw JSON for a command, for callers that pass the trainer's answer on
