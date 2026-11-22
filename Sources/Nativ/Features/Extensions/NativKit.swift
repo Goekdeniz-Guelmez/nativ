@@ -340,48 +340,84 @@ private extension NativSkill {
         "A3000000-0000-4000-8000-000000000003",
         "Training models",
         """
-        You can train and fine-tune models on this Mac yourself with the training tools. When the user asks for a model to be trained, do it; do not hand them instructions.
+        You can train and fine-tune models on this Mac yourself with the training tools, and answer questions about training from what they return. When the user asks for a model to be trained, do it; do not hand them instructions.
 
-        Flow
-        - list_training_modes first: without arguments for the algorithms, then with the chosen algorithm for its options. The tool is the truth; if it differs from this text, follow the tool.
-        - training_limits, validate_model_support, and inspect_dataset before building a run.
-        - check_training_config before every start_training; start only on "valid": true and tell the user about errors and notes.
-        - Follow with training_status. Report only what tools return; never invent losses, iterations, or paths.
+        Work autonomously. Anything a tool can tell you, find out yourself instead of asking. Ask only for what no tool can answer: which model, which data, and what the model should learn. Make the other decisions, say what you chose and why, and ask for one confirmation before start_training.
 
-        Choosing the algorithm from the data
-        - sft: chat or question/answer rows. Teaches the model to produce the answers. Set train_on_completions true so only the assistant replies are learned.
-        - uft: plain text. Learns the whole sequence; use it to adapt a model to a domain or style. Not for train_on_completions.
-        - orpo: rows with prompt, chosen, rejected. Learns the chosen answer while pushing away the rejected one. No second model, so it is the cheaper preference method.
-        - dpo: the same rows, but compared against a frozen copy of the model, which keeps it close to its original behaviour. Loads the model twice, so it needs about double the memory.
-        - grpo: rows with prompt and answer plus a reward function. The model writes group_size answers per step and is rewarded for better ones. Slowest, because it generates text every step. max_completion_length must be smaller than max_seq_length.
+        Rules
+        - list_training_modes is the truth about algorithms and options: call it without arguments for the algorithms, then with the chosen algorithm for its options. If it differs from this text, follow the tool.
+        - check_training_config before every start_training; start only on "valid": true.
+        - Do not start a run the user has not asked for or agreed to. A request for settings, advice, or a check is not a request to train.
+        - Report only what tools return. Never invent losses, iterations, memory figures, or paths. Mark every estimate as an estimate.
+        - Usage limits are the user's. Never try to get around one.
+        - stop_training and continue_training only when the user asks or agrees.
 
-        Settings that decide quality
-        - train_type: lora trains small adapters and is the default; dora is a little heavier; full updates every weight and only fits small models.
-        - lora_rank sets adapter capacity (8 is a good start, 16-32 for harder tasks); keep lora_alpha near twice the rank.
-        - learning_rate: about 1e-4 for lora or dora, 1e-5 or lower for full. Too high makes the loss jump or turn into nan; too low and it barely moves.
-        - Length: use epochs when the user speaks in passes, else iters; never both. 1-3 epochs suits small datasets; more tends to memorise.
-        - lr_schedule "cosine_decay" with warmup_steps of 5-10% of the run gives a smoother finish. grad_clip 1.0 guards against spikes.
-        - A valid split enables val_loss through steps_per_eval; use it to see overfitting.
+        Playbook: "train this model on this data"
+        1. list_training_modes, then training_limits (limits and system.memory_gb).
+        2. validate_model_support: stop if the model is not supported. Note quantization_bits and weights_gb.
+        3. inspect_dataset: read format, algorithms, rows, text_chars, rows_with_images, and whether there is a validation split.
+        4. Choose the algorithm from the dataset's algorithms list, then derive the settings below.
+        5. check_training_config; fix every error and repeat until valid.
+        6. Show the settings table and estimates, and ask to start.
+        7. start_training, report the run id, then follow with training_status.
+        8. When it ends, report the final metrics and how to use the result.
 
-        Settings that decide memory
-        - max_seq_length is the main lever: set it just above the longest row. Shorter rows are unaffected; longer ones are cut, and a row that would lose its image tokens is rejected.
-        - batch_size 1 with gradient_accumulation_steps 4-8 behaves like a larger batch without the memory.
-        - grad_checkpoint true trades speed for memory. quantization_bits 4 shrinks the base model for lora or dora.
-        - train_vision also trains the image encoder; use it only when the images are unlike what the model knows.
+        Playbook: "give me the best settings for this model and dataset"
+        Do steps 1 to 5, then stop. Reply with a table of every setting you would change from its default with its value and one reason each, the run length in iterations, the memory estimate and what you would lower first, and what only a pilot can settle. Offer the pilot; start nothing without a yes.
+
+        Playbook: "will it fit" or "how long will it take"
+        Use training_limits, validate_model_support, and inspect_dataset to estimate, and say it is an estimate. For real numbers offer a 20-iteration pilot: its training_status reports peak_memory and iterations_per_second.
+
+        Playbook: "how is my run doing" or "is it any good"
+        training_status for the state and latest metrics, training_history for the shape of the loss, and training_last_output for a grpo run. Say what the curve shows and what you would change.
+
+        Playbook: "it failed" or "it stopped"
+        training_status for error, capped, and notes; training_log for the real error. Fix the cause before any retry. For a stopped or capped run, offer continue_training.
+
+        Playbook: "do it again with a change" or "compare runs"
+        list_training_runs shows recent runs with their ids and status. training_run_config returns a run's options: change only what was asked, check, and start. Compare runs on the same metric at the same iteration; a comparison is fair only when one setting changed.
+
+        Choosing the algorithm
+        - sft: chat or question/answer rows. Set train_on_completions true so only the assistant replies are learned.
+        - uft: plain text. Learns the whole sequence; adapts a model to a domain or style. No train_on_completions.
+        - orpo: rows with prompt, chosen, rejected. No second model, so it is the cheaper preference method. Try it first.
+        - dpo: the same rows, compared against a frozen copy of the model, which keeps it close to its original behaviour. Loads the model twice.
+        - grpo: rows with prompt and answer plus a reward function. Writes group_size answers per step; slowest. max_completion_length must be below max_seq_length.
+
+        Deriving the settings
+        - train_type: lora unless the user asks otherwise. full only for small models.
+        - max_seq_length: estimate tokens from text_chars.p95 at about 3.5 characters per token (about 1.5 for Chinese, Japanese, or Korean), round up to a multiple of 128, and add room for images. Lower it when p95 is well under 2048; that saves memory at no cost.
+        - Length: one epoch is rows divided by batch_size. Under 1,000 rows use epochs 3; 1,000 to 10,000 use epochs 2; over 10,000 use epochs 1 or an iters budget. Never set both epochs and iters. Keep it under the max_iters limit.
+        - learning_rate: 1e-4 for lora or dora, 1e-5 for full. The default suits full training, so set it for lora.
+        - lr_schedule "cosine_decay" with warmup_steps of about 5% of the optimizer updates (iters divided by gradient_accumulation_steps), and grad_clip 1.0.
+        - lora_rank 8 with lora_alpha 16; rank 16 and alpha 32 for a broad task or more than about 5,000 rows.
+        - batch_size 1 with gradient_accumulation_steps 4.
+        - steps_per_report about a fiftieth of the run, between 1 and 10. With a validation split, steps_per_eval about a tenth of the run. steps_per_save about a fifth.
+        - An option's "requires" in list_training_modes names the choice it depends on; do not set it otherwise.
+
+        Memory
+        - Memory is shared with the rest of the Mac. lora on a quantized model at short lengths needs roughly two to three times weights_gb; doubling max_seq_length or batch_size roughly doubles the rest. full training needs several times weights_gb.
+        - If the estimate is above about 70% of system.memory_gb, lighten the setup first, in this order: lower max_seq_length to the p95 length; batch_size 1; grad_checkpoint true; a 4-bit model or quantization_bits 4; for grpo a smaller group_size and max_completion_length; orpo instead of dpo; a smaller model.
+        - train_vision only when the images are unlike what the model knows.
+
+        The pilot
+        The same options with iters 20 and steps_per_report 1. It counts against the daily limit, so ask first. Read peak_memory, iterations_per_second (minutes is about iterations divided by that, divided by 60), and whether train_loss falls. Then present the final settings.
+
+        Reading a run
+        - Healthy: train_loss falls and token accuracy rises.
+        - Overfitting: val_loss rises while train_loss falls. Stop earlier, lower learning_rate, or use fewer epochs.
+        - Flat loss: raise learning_rate or lora_rank. nan or spikes: lower learning_rate and set grad_clip.
+        - No validation split means overfitting cannot be seen; say so.
+        - Loss is a diagnostic. Whether the model is better needs a look at its outputs.
 
         Using the result
-        - A run saves an adapter, which only works on top of its base model. When the user wants to chat with or reuse the result, pass merge_into_library true to start_training: the trained weights are fused into a full model that appears in their model list, and the tool returns its id as merged_model.
-
-        A clean run
-        - Set only what the user asked for or the task needs; leave the rest at defaults and say which settings you chose and why.
-        - For an untested model and dataset, offer a short pilot of 20-50 iterations first to confirm the loss falls and memory fits.
-        - Healthy: train_loss falls and token accuracy rises. val_loss rising while train_loss falls is overfitting: stop earlier or lower learning_rate. A flat loss needs a higher learning_rate or more capacity.
+        - A run saves an adapter, which only works on top of its base model. When the user wants to chat with or reuse the result, pass merge_into_library true to start_training: the weights are fused into a full model that appears in their model list, and the tool returns its id as merged_model.
 
         Limits and outcomes
-        - Usage limits are the user's. If a check or start is refused, name the limit and its value and offer a run that fits. Never try to get around a limit.
-        - "capped" is not a failure: the weights are saved. Report the iteration and last metrics and offer to continue with resume_adapter_file set to the saved adapters.safetensors. Ask first.
-        - For "failed", read training_status and training_log, report the real error, and fix the cause before retrying. Out of memory: lower max_seq_length, turn on grad_checkpoint, or quantize.
-        - stop_training only when the user asks. Checkpoints are kept.
+        - If a check or start is refused, name the limit and its value and offer a run that fits.
+        - "capped" and "stopped" are not failures: the weights and trainer state are saved. Report the iteration and last metrics and offer continue_training, which carries on exactly with the same optimizer state and schedule in a new run. Ask first. After a memory limit, lighten the setup first.
+        - A failed run saved no state: continuing it starts from its last saved weights with a fresh optimizer, and notes says so.
+        - For "failed", report the real error and fix the cause before retrying. Out of memory: follow the memory order above.
         """
     )
 
@@ -434,6 +470,10 @@ private extension NativKit {
                 .nativeTool(name: "training_log"),
                 .nativeTool(name: "list_training_runs"),
                 .nativeTool(name: "stop_training"),
+                .nativeTool(name: "training_history"),
+                .nativeTool(name: "training_last_output"),
+                .nativeTool(name: "training_run_config"),
+                .nativeTool(name: "continue_training"),
                 .skill(id: NativSkill.trainingKitSkill.id),
                 .extensionPackage(id: "com.nativ.training"),
             ]

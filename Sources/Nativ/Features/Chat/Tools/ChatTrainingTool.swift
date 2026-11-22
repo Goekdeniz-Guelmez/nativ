@@ -15,11 +15,15 @@ enum ChatTrainingToolRegistry {
     static let logToolName = "training_log"
     static let listRunsToolName = "list_training_runs"
     static let stopToolName = "stop_training"
+    static let historyToolName = "training_history"
+    static let lastOutputToolName = "training_last_output"
+    static let configToolName = "training_run_config"
+    static let continueToolName = "continue_training"
 
     static let toolNames = [
         listModesToolName, limitsToolName, validateModelToolName, inspectDatasetToolName,
         checkToolName, startToolName, statusToolName, logToolName, listRunsToolName,
-        stopToolName,
+        stopToolName, historyToolName, lastOutputToolName, configToolName, continueToolName,
     ]
 
     // The Training extension supplies the client while it is enabled. With no
@@ -62,18 +66,18 @@ enum ChatTrainingToolRegistry {
             ),
             definition(
                 limitsToolName,
-                "Show the user's training usage limits and current usage: concurrent runs, runs per day, iterations, minutes, and memory per run. null means unlimited.",
+                "Show the user's training usage limits and current usage: concurrent runs, runs per day, iterations, minutes, and memory per run (null means unlimited), plus this Mac's memory as system.memory_gb.",
                 properties: []
             ),
             definition(
                 validateModelToolName,
-                "Check that a model's architecture can be trained. Reads its config only; says nothing about memory fit.",
+                "Check that a model's architecture can be trained. Also returns quantization_bits and, when the model is already on this Mac, weights_gb, which help estimate memory. Reads its config only; nothing is downloaded or loaded.",
                 properties: [("model", property("string", "Hugging Face id or local path."))],
                 required: ["model"]
             ),
             definition(
                 inspectDatasetToolName,
-                "Check that a dataset loads, and report its splits, row counts, and columns.",
+                "Check that a dataset loads. For each split it returns rows, columns, the row format, the algorithms that format suits, text lengths in characters (median, p95, max), and how many rows have images. Use it to choose the algorithm, max_seq_length, and the run length.",
                 properties: [
                     ("data", property("string", "Folder with train.jsonl, a .jsonl file, or a Hub dataset.")),
                     ("dataset", property("string", "Dataset loaded with Hugging Face datasets; overrides data.")),
@@ -120,8 +124,28 @@ enum ChatTrainingToolRegistry {
             ),
             definition(
                 stopToolName,
-                "Stop a running training run. Checkpoints saved so far are kept. Only call this when the user asks.",
+                "Stop a running training run. It saves its weights and trainer state first, so it can be continued later; this can take up to half a minute. Only call this when the user asks.",
                 properties: [runID]
+            ),
+            definition(
+                historyToolName,
+                "Return a run's metrics over time as [iteration, value] points per metric, thinned to a few points. Use it to judge the shape of the loss: falling, flat, spiking, or overfitting.",
+                properties: [runID, ("points", property("integer", "Points per metric, 5-100. Default 20."))]
+            ),
+            definition(
+                lastOutputToolName,
+                "Return the latest text a run generated, with its prompt, expected answer, and reward. Only runs whose algorithm generates text (grpo) have one.",
+                properties: [runID]
+            ),
+            definition(
+                configToolName,
+                "Return the options a run was started with. Use it to start another run like it with a change, or to compare runs.",
+                properties: [runID]
+            ),
+            definition(
+                continueToolName,
+                "Continue an ended run in a new run that trains the iterations that were left. A stopped or capped run carries on exactly, with its optimizer state and schedule. Counts as a new run against the usage limits. Only call this when the user asks or agrees.",
+                properties: [runID, ("name", property("string", "Optional short label for the new run."))]
             ),
         ]
     }
@@ -275,6 +299,16 @@ struct ChatTrainingToolCommand: Equatable, Sendable {
             self.arguments = ["list", "--limit", try integer("limit", default: 10, range: 1...50)]
         case ChatTrainingToolRegistry.stopToolName:
             self.arguments = ["stop"] + [try string("run_id")].compactMap { $0 }
+        case ChatTrainingToolRegistry.historyToolName:
+            self.arguments = ["history"] + [try string("run_id")].compactMap { $0 }
+                + ["--max-points", try integer("points", default: 20, range: 5...100)]
+        case ChatTrainingToolRegistry.lastOutputToolName:
+            self.arguments = ["sample"] + [try string("run_id")].compactMap { $0 }
+        case ChatTrainingToolRegistry.configToolName:
+            self.arguments = ["config"] + [try string("run_id")].compactMap { $0 }
+        case ChatTrainingToolRegistry.continueToolName:
+            self.arguments = ["continue"] + [try string("run_id")].compactMap { $0 }
+                + ["--name", try string("name") ?? ""]
         default:
             throw ChatTrainingToolError.unsupportedTool(toolName)
         }

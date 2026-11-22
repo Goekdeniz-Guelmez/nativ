@@ -17,6 +17,27 @@ final class ChatTrainingToolTests: XCTestCase {
         XCTAssertEqual(Set(names).count, names.count)
     }
 
+    /// The model follows the skill literally, so every tool it names must
+    /// exist, and every tool must be both explained and part of the Kit.
+    func testTheTrainingSkillNamesExactlyTheToolsThatExist() throws {
+        let skill = try XCTUnwrap(
+            NativKitCatalog.bundled.skillDefinitions.first { $0.name == "Training models" }
+        )
+        let instructions = skill.instructions
+        let tools = Set(ChatTrainingToolRegistry.toolNames)
+        for name in tools {
+            XCTAssertTrue(instructions.contains(name), "The skill never mentions \(name).")
+        }
+        let kit = try XCTUnwrap(NativKitCatalog.bundled.kits.first { $0.id == "training" })
+        let offered = Set(kit.components.compactMap { component -> String? in
+            if case .nativeTool(let name) = component {
+                return name
+            }
+            return nil
+        })
+        XCTAssertEqual(offered, tools)
+    }
+
     func testToolsAreOfferedOnlyWhileTheExtensionProvidesAClient() {
         ChatTrainingToolRegistry.setClient(nil)
         XCTAssertFalse(ChatTrainingToolRegistry.isAvailable)
@@ -64,6 +85,16 @@ final class ChatTrainingToolTests: XCTestCase {
         XCTAssertEqual(try command("training_log", "{}").arguments, ["log", "--lines", "40"])
         XCTAssertEqual(try command("list_training_runs", #"{"limit": 0}"#).arguments, ["list", "--limit", "1"])
         XCTAssertEqual(try command("stop_training", "").arguments, ["stop"])
+        XCTAssertEqual(
+            try command("training_history", #"{"run_id": "abc"}"#).arguments,
+            ["history", "abc", "--max-points", "20"]
+        )
+        XCTAssertEqual(try command("training_last_output", "").arguments, ["sample"])
+        XCTAssertEqual(try command("training_run_config", #"{"run_id": "abc"}"#).arguments, ["config", "abc"])
+        XCTAssertEqual(
+            try command("continue_training", #"{"run_id": "abc"}"#).arguments,
+            ["continue", "abc", "--name", ""]
+        )
         XCTAssertEqual(try command("training_limits", "{}").arguments, ["limits"])
         XCTAssertEqual(
             try command("validate_model_support", #"{"model": "org/name"}"#).arguments,
